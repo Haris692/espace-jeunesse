@@ -22,6 +22,35 @@ const vide = () => ({
 let D = charger();
 let darsPartages = [];
 
+/* Le profil dit quel groupe cet appareil suit : Amine le collège, Adel le
+   lycée, le référent les deux. Il reste propre à l'appareil et ne voyage pas
+   dans l'export — sinon un import changerait la vue de celui qui importe. */
+const CLE_PROFIL = 'espace-jeunesse.profil';
+let profil = localStorage.getItem(CLE_PROFIL) || '';
+
+function profilOk()      { return profil === 'tous' || !!groupe(profil); }
+function estVisible(gid) { return profil === 'tous' || gid === profil; }
+
+function groupesVisibles() {
+  return (profil === 'tous' ? D.groupes.slice() : [groupe(profil)].filter(Boolean))
+    .sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
+}
+
+function choisirProfil(p) {
+  profil = p;
+  localStorage.setItem(CLE_PROFIL, p);
+  vue.gid = p === 'tous' ? null : p;
+  vue.membreId = vue.darsId = null;
+  fermerModale();
+  aller('accueil');
+}
+
+function nomProfil() {
+  if (profil === 'tous') return 'Les deux groupes';
+  const g = groupe(profil);
+  return g ? g.nom : 'Espace Jeunesse';
+}
+
 function charger() {
   try {
     const brut = localStorage.getItem(CLE);
@@ -78,9 +107,11 @@ function membresDe(gid, avecInactifs) {
     .sort((a, b) => nomComplet(a).localeCompare(nomComplet(b), 'fr'));
 }
 
+/* Sans groupe précisé, on ne ressort que les assises des groupes visibles :
+   le cloisonnement vaut pour tout ce qui remonte à l'écran. */
 function assisesDe(gid) {
   return D.assises
-    .filter(a => !gid || a.groupeId === gid)
+    .filter(a => gid ? a.groupeId === gid : estVisible(a.groupeId))
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
@@ -152,6 +183,17 @@ function aller(nom, extra) {
 
 function rendre() {
   const app = $('#app');
+  majEntete();
+
+  if (!profilOk()) { app.innerHTML = vueBienvenue(); return; }
+
+  // un encadrant ne navigue jamais hors de son groupe
+  if (profil !== 'tous') vue.gid = profil;
+  if (vue.membreId) {
+    const m = D.membres.find(x => x.id === vue.membreId);
+    if (!m || !estVisible(m.groupeId)) vue.membreId = null;
+  }
+
   if (vue.membreId)      app.innerHTML = vueMembre(vue.membreId);
   else if (vue.darsId)   app.innerHTML = vueDars(vue.darsId);
   else if (vue.nom === 'accueil') app.innerHTML = vueAccueil();
@@ -160,12 +202,58 @@ function rendre() {
   else if (vue.nom === 'dars')    app.innerHTML = vueListeDars();
 }
 
+function majEntete() {
+  const t = $('#titre-profil');
+  if (!t) return;
+  const seul = profilOk() && profil !== 'tous';
+  t.textContent = profilOk() ? nomProfil() : 'Espace Jeunesse';
+  t.classList.toggle('cliquable', profilOk());
+  t.title = seul ? 'Changer de groupe' : '';
+  $('#tabs').hidden = !profilOk();
+}
+
+// ------------------------------------------------------------- bienvenue ---
+function vueBienvenue() {
+  return `<div class="bienvenue">
+    <h1>Espace Jeunesse</h1>
+    <p class="sub">Le suivi des groupes, l'appel des assises et les dars.<br>
+      Pour commencer : quel groupe suit cet appareil ?</p>
+    ${D.groupes.sort((a, b) => (a.ordre || 0) - (b.ordre || 0)).map(g => `
+      <button class="choix" data-profil="${g.id}">
+        <span class="choix-nom">${echap(g.nom)}</span>
+        <span class="choix-sous">${g.encadrant ? 'Encadré par ' + echap(g.encadrant) : 'Sans encadrant'}</span>
+      </button>`).join('')}
+    <button class="choix" data-profil="tous">
+      <span class="choix-nom">Les deux groupes</span>
+      <span class="choix-sous">Vue du référent</span>
+    </button>
+    <p class="faint" style="margin-top:18px">Ce choix se change à tout moment dans les réglages.
+      Chaque appareil garde ses propres données.</p>
+  </div>`;
+}
+
+function changerProfil() {
+  modale('Quel groupe suit cet appareil ?', `
+    <div class="bienvenue" style="padding:0">
+      ${D.groupes.map(g => `<button class="choix${g.id === profil ? ' actif' : ''}" data-profil="${g.id}">
+        <span class="choix-nom">${echap(g.nom)}</span>
+        <span class="choix-sous">${g.encadrant ? echap(g.encadrant) : '—'} · ${membresDe(g.id).length} jeunes</span>
+      </button>`).join('')}
+      <button class="choix${profil === 'tous' ? ' actif' : ''}" data-profil="tous">
+        <span class="choix-nom">Les deux groupes</span>
+        <span class="choix-sous">Vue du référent</span>
+      </button>
+    </div>
+    <p class="faint">Changer de groupe ne change rien aux données enregistrées : ça change ce que
+      cet appareil affiche.</p>`);
+}
+
 // ----------------------------------------------------------------- accueil --
 function vueAccueil() {
-  const total = D.membres.filter(m => m.actif !== false).length;
-  const der = assisesDe()[0];
+  const gs = groupesVisibles();
+  const total = gs.reduce((n, g) => n + membresDe(g.id).length, 0);
   const alertes = [];
-  for (const g of D.groupes) {
+  for (const g of gs) {
     for (const m of membresDe(g.id)) {
       if (decroche(m.id, g.id)) alertes.push({ m, g, motif: '3 absences de suite' });
       else {
@@ -176,10 +264,11 @@ function vueAccueil() {
   }
 
   let h = `<h1>Assalamu alaykum</h1>
-  <p class="sub">${D.groupes.length} groupes · ${total} jeunes suivis · ${D.assises.length} assises enregistrées</p>
+  <p class="sub">${profil === 'tous' ? gs.length + ' groupes · ' : echap(nomProfil()) + ' · '}${
+    total} jeune${total > 1 ? 's' : ''} suivi${total > 1 ? 's' : ''} · ${assisesDe().length} assises</p>
 
   <div class="tuiles">
-    ${D.groupes.map(g => {
+    ${gs.map(g => {
       const ms = membresDe(g.id);
       const as = assisesDe(g.id);
       const der8 = as.slice(0, 8);
@@ -202,7 +291,14 @@ function vueAccueil() {
 
   <div class="section"><h2>Faire l'appel</h2></div>
   <div class="btn-row">
-    ${D.groupes.map(g => `<button class="btn btn-primary" data-go-appel="${g.id}">✓ ${echap(g.nom)}</button>`).join('')}
+    ${gs.map(g => `<button class="btn btn-primary" data-go-appel="${g.id}">✓ ${
+      profil === 'tous' ? echap(g.nom) : 'Faire l\'appel'}</button>`).join('')}
+  </div>
+
+  <div class="section"><h2>Ajouter des jeunes</h2></div>
+  <div class="btn-row">
+    ${gs.map(g => `<button class="btn" data-ajout-rapide="${g.id}">+ ${
+      profil === 'tous' ? echap(g.nom) : 'Inscrire des jeunes'}</button>`).join('')}
   </div>`;
 
   if (alertes.length) {
@@ -231,8 +327,8 @@ function ligneAssise(a) {
   return `<button class="item" data-assise="${a.id}">
     <span class="avatar">${dateFr(a.date).slice(0, 2)}</span>
     <span class="grow">
-      <span class="ligne-nom truncate">${echap(a.theme || (g ? g.nom : 'Assise'))}</span>
-      <span class="ligne-meta">${dateFr(a.date, true)}${g ? ' · ' + echap(g.nom) : ''}</span>
+      <span class="ligne-nom truncate">${echap(a.theme || 'Assise')}</span>
+      <span class="ligne-meta">${dateFr(a.date, true)}${g && profil === 'tous' ? ' · ' + echap(g.nom) : ''}</span>
     </span>
     <span class="chip c-present">${c.present + c.retard}</span>
     <span class="fleche">›</span>
@@ -254,7 +350,8 @@ function trouverAssise(gid, date) {
 }
 
 function vueAppel() {
-  const gid = vue.gid || (D.groupes[0] && D.groupes[0].id);
+  const gs = groupesVisibles();
+  const gid = (estVisible(vue.gid) && vue.gid) || (gs[0] && gs[0].id);
   if (!gid) return `<div class="empty">Crée d'abord un groupe dans l'onglet Groupes.</div>`;
   const g = groupe(gid);
   const ms = membresDe(gid);
@@ -265,11 +362,11 @@ function vueAppel() {
   <p class="sub">${echap(g.nom)}${g.encadrant ? ' · ' + echap(g.encadrant) : ''}</p>
 
   <div class="card">
-    <div class="field-2">
-      <label class="field"><span>Groupe</span>
-        <select id="sel-groupe">${D.groupes.map(x =>
+    <div class="${gs.length > 1 ? 'field-2' : ''}">
+      ${gs.length > 1 ? `<label class="field"><span>Groupe</span>
+        <select id="sel-groupe">${gs.map(x =>
           `<option value="${x.id}"${x.id === gid ? ' selected' : ''}>${echap(x.nom)}</option>`).join('')}</select>
-      </label>
+      </label>` : ''}
       <label class="field"><span>Date de l'assise</span>
         <input type="date" id="sel-date" value="${vue.date}">
       </label>
@@ -280,8 +377,9 @@ function vueAppel() {
   </div>`;
 
   if (!ms.length) {
-    return h + `<div class="empty">Aucun jeune dans ce groupe.<br><br>
-      <button class="btn btn-primary btn-sm" data-add-membre="${gid}">+ Ajouter un jeune</button></div>`;
+    return h + `<div class="empty">Aucun jeune inscrit dans ce groupe.<br>
+      L'appel se remplira une fois la liste faite.<br><br>
+      <button class="btn btn-primary" data-ajout-rapide="${gid}">+ Inscrire les jeunes</button></div>`;
   }
 
   h += `<div class="appel-head">
@@ -324,6 +422,9 @@ function vueAppel() {
   }
 
   h += `</div>
+  <div class="btn-row" style="margin-top:10px">
+    <button class="btn btn-wide" data-ajout-rapide="${gid}">+ Un nouveau est venu aujourd'hui</button>
+  </div>
   <div class="card" style="margin-top:14px">
     <label class="field" style="margin-bottom:0"><span>Remarques sur l'assise</span>
       <textarea id="in-commentaire" placeholder="Ce qui a marché, ce qui est à reprendre, les points à suivre…">${echap(a ? a.commentaire || '' : '')}</textarea>
@@ -355,7 +456,7 @@ function pointer(membreId, valeur) {
 // ------------------------------------------------------------------ groupes --
 function vueGroupes() {
   let h = `<h1>Groupes</h1><p class="sub">Un encadrant par groupe, les jeunes rattachés à l'un ou à l'autre.</p><div class="liste">`;
-  for (const g of D.groupes.slice().sort((a, b) => (a.ordre || 0) - (b.ordre || 0))) {
+  for (const g of groupesVisibles()) {
     const ms = membresDe(g.id);
     h += `<button class="item" data-groupe="${g.id}">
       <span class="avatar">${echap((g.nom[0] || 'G').toUpperCase())}</span>
@@ -380,18 +481,20 @@ function vueGroupe(gid) {
   const ms = membresDe(gid, true);
   const as = assisesDe(gid);
 
-  let h = `<button class="btn btn-ghost btn-sm" data-retour-groupes>‹ Groupes</button>
+  let h = `${profil === 'tous' ? '<button class="btn btn-ghost btn-sm" data-retour-groupes>‹ Groupes</button>' : ''}
   <h1>${echap(g.nom)}</h1>
   <p class="sub">${g.encadrant ? 'Encadrant : ' + echap(g.encadrant) + ' · ' : ''}${ms.filter(m => m.actif !== false).length} jeunes · ${as.length} assises</p>
   <div class="btn-row">
-    <button class="btn btn-primary btn-sm" data-add-membre="${gid}">+ Ajouter un jeune</button>
+    <button class="btn btn-primary btn-sm" data-ajout-rapide="${gid}">+ Ajouter des jeunes</button>
+    <button class="btn btn-sm" data-add-membre="${gid}">+ Un seul, en détail</button>
     <button class="btn btn-sm" data-edit-groupe="${gid}">Modifier le groupe</button>
     <button class="btn btn-sm" data-export-csv="${gid}">Export CSV</button>
   </div>
 
   <div class="section"><h2>Les jeunes</h2></div>`;
 
-  if (!ms.length) h += `<div class="empty">Personne pour l'instant.</div>`;
+  if (!ms.length) h += `<div class="empty">Personne pour l'instant.<br>
+    Le plus rapide : <b>Ajouter des jeunes</b>, et coller la liste des prénoms.</div>`;
   else {
     h += `<div class="liste">`;
     for (const m of ms) {
@@ -556,8 +659,10 @@ function formMembre(m, gid) {
       </div>
       <div class="field-2">
         <label class="field"><span>Classe / niveau</span><input type="text" name="niveau" placeholder="4ème, 2nde…" value="${echap(e.niveau || '')}"></label>
-        <label class="field"><span>Groupe</span><select name="groupeId">${D.groupes.map(g =>
-          `<option value="${g.id}"${(e.groupeId || gid) === g.id ? ' selected' : ''}>${echap(g.nom)}</option>`).join('')}</select></label>
+        ${profil === 'tous'
+          ? `<label class="field"><span>Groupe</span><select name="groupeId">${D.groupes.map(g =>
+              `<option value="${g.id}"${(e.groupeId || gid) === g.id ? ' selected' : ''}>${echap(g.nom)}</option>`).join('')}</select></label>`
+          : `<input type="hidden" name="groupeId" value="${echap(e.groupeId || gid || profil)}">`}
       </div>
       <div class="field-2">
         <label class="field"><span>Téléphone du jeune</span><input type="tel" name="telephone" value="${echap(e.telephone || '')}"></label>
@@ -580,6 +685,49 @@ function formMembre(m, gid) {
     if (m) Object.assign(m, f);
     else D.membres.push(Object.assign({ id: id(), notes: [] }, f));
     sauver(); fermerModale(); rendre(); toast('Enregistré');
+  });
+}
+
+/* Inscrire toute une liste d'un coup : au début d'année on a les prénoms sur
+   un papier, pas envie de remplir dix formulaires. Une ligne = un jeune,
+   « Prénom Nom » et, après une virgule, la classe si on l'a. */
+function formAjoutRapide(gid) {
+  const g = groupe(gid);
+  modale('Ajouter des jeunes', `
+    <p class="muted" style="margin-top:0">Dans <b>${echap(g.nom)}</b>. Un jeune par ligne :
+    prénom, nom si tu l'as, puis une virgule et la classe.</p>
+    <form id="f-rapide">
+      <label class="field"><span>La liste</span>
+        <textarea name="liste" style="min-height:150px" placeholder="Yassin B., 4ème
+Ilyas K., 3ème
+Anas
+Bilal S."></textarea></label>
+      <div class="btn-row">
+        <button type="submit" class="btn btn-primary grow">Inscrire</button>
+        <button type="button" class="btn" data-add-membre="${gid}">Un seul, en détail</button>
+      </div>
+    </form>`);
+
+  $('#f-rapide').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const lignes = new FormData(ev.target).get('liste').split('\n')
+      .map(l => l.trim()).filter(Boolean);
+    let n = 0;
+    for (const l of lignes) {
+      const [ident, niveau] = l.split(/[,;]/);
+      const mots = ident.trim().split(/\s+/);
+      const prenom = mots.shift();
+      if (!prenom) continue;
+      D.membres.push({
+        id: id(), groupeId: gid, prenom,
+        nom: mots.join(' '), niveau: (niveau || '').trim(),
+        telephone: '', contact: '', dateArrivee: aujourdhui(), actif: true, notes: []
+      });
+      n++;
+    }
+    sauver(); fermerModale();
+    vue.gid = gid; vue.membreId = null; rendre();   // on reste sur l'écran d'où on vient
+    toast(n ? `${n} jeune${n > 1 ? 's' : ''} inscrit${n > 1 ? 's' : ''}` : 'Aucun nom lu');
   });
 }
 
@@ -684,6 +832,12 @@ function vueAssise(aid) {
 function vueReglages() {
   modale('Réglages', `
     <div class="card">
+      <h3>Groupe de cet appareil</h3>
+      <p class="muted">Cet appareil affiche <b>${echap(nomProfil())}</b>.
+      Chaque encadrant ouvre le sien : les deux groupes ne se mélangent pas à l'écran.</p>
+      <button class="btn btn-sm" id="r-profil">Changer de groupe</button>
+    </div>
+    <div class="card">
       <h3>Sauvegarde</h3>
       <p class="muted">Les données vivent dans ce navigateur uniquement. Exporte régulièrement :
       c'est aussi le seul moyen de transmettre le suivi à un autre encadrant.</p>
@@ -692,6 +846,8 @@ function vueReglages() {
         <button class="btn btn-sm" id="r-import">Importer</button>
         <button class="btn btn-sm" id="r-csv">Présences (CSV)</button>
       </div>
+      <p class="faint">À l'import, on te demandera si tu fusionnes — c'est ce qu'il faut pour
+      réunir le collège et le lycée chez le référent sans écraser l'un avec l'autre.</p>
       <input type="file" id="r-file" accept="application/json,.json" hidden>
     </div>
     <div class="card">
@@ -708,6 +864,34 @@ function vueReglages() {
       <button class="btn btn-danger btn-sm" id="r-raz">Tout effacer</button>
     </div>
     <p class="faint">${D.membres.length} jeunes · ${D.assises.length} assises · ${D.dars.length} dars enregistrés ici.</p>`);
+}
+
+/* Fusion d'un export venu d'un autre appareil. Chaque groupe étant tenu par un
+   seul encadrant, il n'y a pas de conflit à arbitrer : on ajoute ce qui manque
+   et on met à jour ce qui existe. Les assises se reconnaissent au couple
+   groupe + date, pas seulement à leur identifiant, pour ne pas créer de
+   doublon si la même assise a été saisie des deux côtés. */
+function fusionner(src) {
+  for (const g of src.groupes || [])
+    if (!D.groupes.some(x => x.id === g.id)) D.groupes.push(g);
+
+  for (const m of src.membres || []) {
+    const ex = D.membres.find(x => x.id === m.id);
+    if (ex) Object.assign(ex, m); else D.membres.push(m);
+  }
+
+  for (const a of src.assises || []) {
+    const ex = D.assises.find(x => x.id === a.id)
+            || D.assises.find(x => x.groupeId === a.groupeId && x.date === a.date);
+    if (ex) {
+      ex.presences  = Object.assign({}, ex.presences, a.presences);
+      ex.theme      = a.theme || ex.theme;
+      ex.commentaire = a.commentaire || ex.commentaire;
+    } else D.assises.push(a);
+  }
+
+  for (const d of src.dars || [])
+    if (!D.dars.some(x => x.id === d.id)) D.dars.push(d);
 }
 
 function exporterCSV(gid) {
@@ -727,12 +911,28 @@ function exporterCSV(gid) {
 }
 
 // ------------------------------------------------------------- événements ---
+let importEnAttente = null;
+
 document.addEventListener('click', (ev) => {
   const c = (s) => ev.target.closest(s);
   let el;
 
+  // choix du groupe suivi par cet appareil
+  if ((el = c('[data-profil]'))) return choisirProfil(el.dataset.profil);
+  if (c('#titre-profil') && profilOk()) return changerProfil();
+  if (c('#r-profil')) return changerProfil();
+
+  if (c('#i-fusion') && importEnAttente) {
+    fusionner(importEnAttente); importEnAttente = null;
+    sauver(); fermerModale(); aller('accueil'); return toast('Données fusionnées');
+  }
+  if (c('#i-remplace') && importEnAttente) {
+    D = Object.assign(vide(), importEnAttente); importEnAttente = null;
+    sauver(); fermerModale(); aller('accueil'); return toast('Données remplacées');
+  }
+
   // navigation par onglets
-  if ((el = c('.tab'))) return aller(el.dataset.view, { gid: null });
+  if ((el = c('.tab'))) return aller(el.dataset.view, { gid: profil === 'tous' ? null : profil });
 
   // pointage
   if ((el = c('.seg button'))) {
@@ -750,6 +950,7 @@ document.addEventListener('click', (ev) => {
   if (c('[data-retour-membre]'))  { vue.membreId = null; return rendre(); }
   if (c('[data-retour-dars]'))    { vue.darsId = null; return rendre(); }
 
+  if ((el = c('[data-ajout-rapide]'))) return formAjoutRapide(el.dataset.ajoutRapide);
   if ((el = c('[data-add-membre]')))  return formMembre(null, el.dataset.addMembre);
   if ((el = c('[data-edit-membre]'))) return formMembre(D.membres.find(m => m.id === el.dataset.editMembre));
   if ((el = c('[data-note-membre]'))) return formNote(D.membres.find(m => m.id === el.dataset.noteMembre));
@@ -845,15 +1046,27 @@ document.addEventListener('change', (ev) => {
     if (!f) return;
     const r = new FileReader();
     r.onload = () => {
+      let d;
       try {
-        const d = JSON.parse(r.result);
-        if (!d.groupes || !d.membres) throw new Error('format');
-        if (!confirm('Remplacer les données actuelles par ce fichier ?')) return;
-        D = Object.assign(vide(), d);
-        sauver(); fermerModale(); aller('accueil'); toast('Données importées');
-      } catch (e) { alert('Fichier illisible : ' + e.message); }
+        d = JSON.parse(r.result);
+        if (!d.groupes || !d.membres) throw new Error('ce fichier n\'est pas un export de l\'outil');
+      } catch (e) {
+        return modale('Import impossible', `<p class="muted">${echap(e.message)}</p>`);
+      }
+      importEnAttente = d;
+      const nb = (d.membres || []).length, na = (d.assises || []).length;
+      modale('Importer ces données', `
+        <p class="muted" style="margin-top:0">Le fichier contient ${(d.groupes || []).length} groupe(s),
+        ${nb} jeune(s) et ${na} assise(s).</p>
+        <div class="btn-row">
+          <button class="btn btn-primary grow" id="i-fusion">Fusionner avec l'existant</button>
+          <button class="btn btn-danger" id="i-remplace">Tout remplacer</button>
+        </div>
+        <p class="faint">Fusionner ajoute ce qui manque et met à jour le reste : c'est ce qu'il faut
+        pour réunir les deux groupes. Remplacer efface ce qui est sur cet appareil.</p>`);
     };
     r.readAsText(f);
+    t.value = '';   // pour pouvoir réimporter le même fichier
   }
 });
 

@@ -6,17 +6,39 @@ marche sur téléphone comme sur ordinateur.
 
 **En ligne :** https://haris692.github.io/espace-jeunesse/
 
+## Un appareil, un groupe
+
+Au premier lancement, l'outil demande **quel groupe suit cet appareil** :
+
+- *Collège — 4ème / 3ème* (Amine)
+- *Lycée* (Adel)
+- *Les deux groupes* — la vue du référent
+
+Le choix est tenu partout : un encadrant ne voit que ses jeunes, ses assises et
+ses alertes. Pas de sélecteur de groupe à l'appel, pas de liste de groupes à
+traverser, aucun risque de pointer dans le mauvais. Le nom du groupe reste
+affiché en haut ; un appui dessus permet d'en changer, comme dans les réglages.
+
+Les dars, eux, restent communs aux deux groupes : c'est une bibliothèque, chacun
+y puise.
+
 ## Ce que ça fait
 
 | Onglet | À quoi ça sert |
 |---|---|
 | **Accueil** | Effectifs, taux de présence des 8 dernières assises, et la liste des jeunes à rappeler (3 absences de suite, ou moins de 50 % de présence). |
-| **Appel** | La feuille d'appel : groupe, date, thème du jour, puis un appui par jeune — Présent / Retard / Excusé / Absent. Enregistré au fur et à mesure. |
-| **Groupes** | Les deux groupes et leurs encadrants, la liste des jeunes avec leur assiduité, et la fiche individuelle (contacts, historique, notes de suivi). |
+| **Appel** | La feuille d'appel : date, thème du jour, puis un appui par jeune — Présent / Retard / Excusé / Absent. Enregistré au fur et à mesure. Un bouton permet d'inscrire sur place un jeune qui vient pour la première fois. |
+| **Groupes** | Le groupe et son encadrant, la liste des jeunes avec leur assiduité, et la fiche individuelle (contacts, historique, notes de suivi). |
 | **Dars** | Les supports d'assise : objectif, plan, texte arabe, Coran et hadith, références, lien vers un PDF. Recherche plein texte. |
 
-Deux groupes sont prêts au premier lancement : *Collège — 4ème / 3ème* (Amine)
-et *Lycée* (Adel). Tout est modifiable.
+## Inscrire les jeunes
+
+Deux chemins, depuis l'accueil, l'appel ou la fiche du groupe :
+
+- **Ajouter des jeunes** — on colle la liste, un par ligne. `Yassin B., 4ème`
+  donne prénom, nom et classe ; une ligne avec juste `Anas` marche aussi.
+- **Un seul, en détail** — le formulaire complet : contacts, date d'arrivée,
+  et le cas d'un jeune qui ne vient plus.
 
 ## Où vivent les données
 
@@ -26,7 +48,10 @@ mais qui a deux conséquences à connaître :
 
 1. **Les données ne se synchronisent pas** entre Adel, Amine et le référent.
    Chacun tient son groupe sur son téléphone. Pour regrouper : *Réglages →
-   Exporter (JSON)*, puis on importe chez le référent.
+   Exporter (JSON)*, puis chez le référent *Importer → **Fusionner***, qui
+   ajoute ce qui manque sans écraser l'autre groupe. Réimporter deux fois le
+   même fichier ne crée pas de doublon, et une assise déjà saisie des deux
+   côtés (même groupe, même date) se recolle en une seule.
 2. **Vider les données du navigateur efface tout.** Exporter de temps en temps.
 
 L'export CSV des présences s'ouvre directement dans Excel ou LibreOffice.

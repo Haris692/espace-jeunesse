@@ -77,6 +77,23 @@ body {
   background: rgba(255,255,255,.18); font-size: .78rem; letter-spacing: .04em;
 }
 .brand-txt { font-size: 1.02rem; letter-spacing: .01em; }
+/* le titre porte le nom du groupe suivi : on sait toujours dans quel groupe on est */
+.brand-txt.cliquable { cursor: pointer; }
+.brand-txt.cliquable::after { content: ' ⌄'; opacity: .6; font-size: .85em; }
+
+/* ---------- Écran d'accueil : quel groupe suit cet appareil ---------- */
+.bienvenue { max-width: 460px; margin: 6vh auto 0; padding: 0 4px; }
+.bienvenue h1 { font-size: 1.5rem; }
+.choix {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 15px 16px; margin-bottom: 10px; color: inherit; font: inherit;
+}
+.choix:hover { border-color: var(--accent); }
+.choix.actif { border-color: var(--accent); background: var(--accent-soft); }
+.choix-nom  { display: block; font-weight: 600; font-size: 1rem; }
+.choix-sous { display: block; font-size: .84rem; color: var(--ink-soft); margin-top: 2px; }
 .topbar .icon-btn { color: #fff; }
 
 /* ---------- Onglets ---------- */
