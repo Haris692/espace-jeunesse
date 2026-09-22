@@ -26,10 +26,36 @@ y puise.
 
 | Onglet | À quoi ça sert |
 |---|---|
-| **Accueil** | Effectifs, taux de présence des 8 dernières assises, et la liste des jeunes à rappeler (3 absences de suite, ou moins de 50 % de présence). |
-| **Appel** | La feuille d'appel : date, thème du jour, puis un appui par jeune — Présent / Retard / Excusé / Absent. Enregistré au fur et à mesure. Un bouton permet d'inscrire sur place un jeune qui vient pour la première fois. |
+| **Accueil** | Effectifs, taux de présence des 8 dernières assises, la prochaine assise, et la liste des jeunes à rappeler (3 absences de suite, ou moins de 50 % de présence). |
+| **Appel** | La feuille d'appel : date, thème du jour, puis un appui par jeune — Présent / Retard / Excusé / Absent. Enregistré au fur et à mesure. Un bouton permet d'inscrire sur place un jeune qui vient pour la première fois, un autre de prendre la photo du jour. |
+| **Planning** | Les assises programmées : date, heure, lieu, thème, dars prévu, notes de préparation. Le jour venu on ouvre l'assise et on fait l'appel dedans. |
 | **Groupes** | Le groupe et son encadrant, la liste des jeunes avec leur assiduité, et la fiche individuelle (contacts, historique, notes de suivi). |
 | **Dars** | Les supports d'assise : objectif, plan, texte arabe, Coran et hadith, références, lien vers un PDF. Recherche plein texte. |
+| **Photos** | L'album des assises, groupé par date, avec légendes. |
+
+## Le planning
+
+Une assise programmée *est* une assise, simplement sans pointage — il n'y a pas
+deux objets à garder d'accord. On pose une date, éventuellement l'heure, le lieu
+et le dars prévu, et on peut **répéter chaque semaine** jusqu'à un trimestre
+d'un coup : les dates déjà occupées sont sautées, donc reprogrammer ne crée
+jamais de doublon. Le jour J, on ouvre l'assise et on fait l'appel dedans.
+
+## Les photos
+
+Prises depuis l'appel (*Souvenir de l'assise*) ou depuis l'onglet Photos. Chaque
+image est **réduite à 1600 px dans le navigateur** avant d'être rangée — une
+photo de téléphone de 4 Mo en pèse environ 250 Ko, et les photos tournées de
+travers sont redressées via leur orientation EXIF.
+
+Elles ne vont pas dans `localStorage`, qui exploserait, mais dans **IndexedDB**,
+en deux magasins : les vignettes (chargées d'un bloc pour l'album) et les
+originaux (lus seulement à l'ouverture d'une photo).
+
+**Elles ne partent pas dans l'export JSON**, volontairement : des visages de
+mineurs n'ont pas à circuler dans un fichier qu'on s'échange. Elles restent sur
+l'appareil qui les a prises ; chaque photo se télécharge une par une depuis
+l'album si on veut la sortir.
 
 ## Inscrire les jeunes
 
@@ -84,6 +110,9 @@ styles.css   thème clair/sombre, mobile d'abord, feuille d'appel imprimable
 app.js       données, vues et événements — un seul fichier, sans dépendance
 data/dars-partages.json   les dars communs, versionnés dans le dépôt
 ```
+
+Les listes de jeunes ne sont **pas** versionnées (`.gitignore`) : le dépôt est
+public. Elles se transmettent par fichier d'export, de la main à la main.
 
 ## Si le besoin de synchronisation devient réel
 

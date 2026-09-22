@@ -72,6 +72,128 @@ function sauver() {
   }
 }
 
+// ------------------------------------------------------------------ photos --
+/* Des photos dans localStorage feraient sauter le quota en une assise. Elles
+   vont donc dans IndexedDB, et dans deux magasins séparés : les vignettes,
+   légères, qu'on charge d'un bloc pour l'album, et les originaux, qu'on ne lit
+   que lorsqu'on ouvre une photo en grand. Elles ne quittent jamais l'appareil
+   et ne partent pas dans l'export JSON. */
+const BASE_PHOTOS = 'espace-jeunesse-photos';
+let basePromesse = null;
+let album = [];          // les vignettes, triées de la plus récente à la plus ancienne
+
+function basePhotos() {
+  if (!basePromesse) basePromesse = new Promise((res, rej) => {
+    const r = indexedDB.open(BASE_PHOTOS, 1);
+    r.onupgradeneeded = () => {
+      const b = r.result;
+      if (!b.objectStoreNames.contains('vignettes')) b.createObjectStore('vignettes', { keyPath: 'id' });
+      if (!b.objectStoreNames.contains('originaux')) b.createObjectStore('originaux');
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror   = () => rej(r.error);
+  });
+  return basePromesse;
+}
+
+function idbTout(magasin) {
+  return basePhotos().then(b => new Promise((res, rej) => {
+    const r = b.transaction(magasin).objectStore(magasin).getAll();
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+}
+function idbLire(magasin, cle) {
+  return basePhotos().then(b => new Promise((res, rej) => {
+    const r = b.transaction(magasin).objectStore(magasin).get(cle);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+}
+function idbEcrire(magasin, valeur, cle) {
+  return basePhotos().then(b => new Promise((res, rej) => {
+    const t = b.transaction(magasin, 'readwrite');
+    cle === undefined ? t.objectStore(magasin).put(valeur) : t.objectStore(magasin).put(valeur, cle);
+    t.oncomplete = () => res(); t.onerror = () => rej(t.error);
+  }));
+}
+function idbEffacer(magasin, cle) {
+  return basePhotos().then(b => new Promise((res, rej) => {
+    const t = b.transaction(magasin, 'readwrite');
+    t.objectStore(magasin).delete(cle);
+    t.oncomplete = () => res(); t.onerror = () => rej(t.error);
+  }));
+}
+
+/* Une photo de téléphone pèse 4 Mo ; réduite au format d'un écran elle en pèse
+   200 Ko, et personne ne verra la différence sur un souvenir d'assise. */
+function reduire(fichier, cote, qualite) {
+  const dessiner = (source, l, h) => {
+    const r = Math.min(1, cote / Math.max(l, h));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(l * r));
+    c.height = Math.max(1, Math.round(h * r));
+    c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
+    return c;
+  };
+
+  // createImageBitmap redresse les photos prises de travers (orientation EXIF)
+  if (window.createImageBitmap) {
+    return createImageBitmap(fichier, { imageOrientation: 'from-image' })
+      .then(bmp => {
+        const c = dessiner(bmp, bmp.width, bmp.height);
+        bmp.close && bmp.close();
+        return c;
+      });
+  }
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(fichier);
+    img.onload  = () => { const c = dessiner(img, img.naturalWidth, img.naturalHeight);
+                          URL.revokeObjectURL(url); res(c); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('image illisible')); };
+    img.src = url;
+  }).then(c => c);
+}
+
+function versBlob(canvas, qualite) {
+  return new Promise((res, rej) =>
+    canvas.toBlob(b => b ? res(b) : rej(new Error('conversion impossible')), 'image/jpeg', qualite));
+}
+
+async function ajouterPhotos(fichiers, cible) {
+  let n = 0;
+  for (const f of fichiers) {
+    if (!f.type.startsWith('image/')) continue;
+    try {
+      const grand  = await reduire(f, 1600, 0.78);
+      const petit  = await reduire(f, 420, 0.6);
+      const blob   = await versBlob(grand, 0.78);
+      const pid    = id();
+      const fiche  = {
+        id: pid, groupeId: cible.gid, date: cible.date,
+        assiseId: cible.assiseId || '', legende: '',
+        poids: blob.size, largeur: grand.width, hauteur: grand.height,
+        vignette: petit.toDataURL('image/jpeg', 0.6),
+        ajoutee: new Date().toISOString()
+      };
+      await idbEcrire('originaux', blob, pid);
+      await idbEcrire('vignettes', fiche);
+      album.unshift(fiche);
+      n++;
+    } catch (e) {
+      console.error('Photo ignorée', f.name, e);
+    }
+  }
+  album.sort((a, b) => (b.date + b.ajoutee).localeCompare(a.date + a.ajoutee));
+  rendre();
+  toast(n ? `${n} photo${n > 1 ? 's' : ''} ajoutée${n > 1 ? 's' : ''}`
+          : 'Aucune photo lisible');
+}
+
+function photosDe(gid, date) {
+  return album.filter(p => (gid ? p.groupeId === gid : estVisible(p.groupeId))
+                        && (!date || p.date === date));
+}
+
 // ------------------------------------------------------------------ outils --
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -196,10 +318,12 @@ function rendre() {
 
   if (vue.membreId)      app.innerHTML = vueMembre(vue.membreId);
   else if (vue.darsId)   app.innerHTML = vueDars(vue.darsId);
-  else if (vue.nom === 'accueil') app.innerHTML = vueAccueil();
-  else if (vue.nom === 'appel')   app.innerHTML = vueAppel();
-  else if (vue.nom === 'groupes') app.innerHTML = vue.gid ? vueGroupe(vue.gid) : vueGroupes();
-  else if (vue.nom === 'dars')    app.innerHTML = vueListeDars();
+  else if (vue.nom === 'accueil')  app.innerHTML = vueAccueil();
+  else if (vue.nom === 'appel')    app.innerHTML = vueAppel();
+  else if (vue.nom === 'planning') app.innerHTML = vuePlanning();
+  else if (vue.nom === 'groupes')  app.innerHTML = vue.gid ? vueGroupe(vue.gid) : vueGroupes();
+  else if (vue.nom === 'dars')     app.innerHTML = vueListeDars();
+  else if (vue.nom === 'photos')   app.innerHTML = vueSouvenirs();
 }
 
 function majEntete() {
@@ -300,6 +424,23 @@ function vueAccueil() {
     ${gs.map(g => `<button class="btn" data-ajout-rapide="${g.id}">+ ${
       profil === 'tous' ? echap(g.nom) : 'Inscrire des jeunes'}</button>`).join('')}
   </div>`;
+
+  const prochaine = aVenir()[0];
+  if (prochaine) {
+    const pg = groupe(prochaine.groupeId);
+    h += `<div class="section"><h2>Prochaine assise</h2></div>
+    <button class="item" data-assise="${prochaine.id}">
+      <span class="avatar">${dateFr(prochaine.date).slice(0, 2)}</span>
+      <span class="grow">
+        <span class="ligne-nom">${dateFr(prochaine.date, true)}</span>
+        <span class="ligne-meta" style="display:block">${[
+          prochaine.heure, prochaine.lieu, prochaine.theme,
+          pg && profil === 'tous' ? pg.nom : ''].filter(Boolean).map(echap).join(' · ') || 'À préparer'}</span>
+      </span>
+      <span class="chip chip-accent">${echap(ecart(prochaine.date))}</span>
+      <span class="fleche">›</span>
+    </button>`;
+  }
 
   if (alertes.length) {
     h += `<div class="section"><h2>À rappeler</h2><span class="chip chip-alert">${alertes.length}</span></div>
@@ -421,10 +562,23 @@ function vueAppel() {
     </div>`;
   }
 
+  const souvenirs = photosDe(gid, vue.date);
   h += `</div>
   <div class="btn-row" style="margin-top:10px">
     <button class="btn btn-wide" data-ajout-rapide="${gid}">+ Un nouveau est venu aujourd'hui</button>
   </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-row" style="margin-bottom:10px">
+      <h3 class="grow" style="margin:0">Souvenir de l'assise</h3>
+      <button class="btn btn-sm" data-photo-pour="${gid}">📷 Photo</button>
+    </div>
+    ${souvenirs.length
+      ? `<div class="album">${souvenirs.map(p => `<button class="vign" data-photo="${p.id}">
+           <img src="${p.vignette}" alt="Photo de l'assise" loading="lazy"></button>`).join('')}</div>`
+      : `<p class="faint" style="margin:0">Rien pour ce jour. Une photo de groupe à la fin, et l'année se raconte toute seule.</p>`}
+  </div>
+
   <div class="card" style="margin-top:14px">
     <label class="field" style="margin-bottom:0"><span>Remarques sur l'assise</span>
       <textarea id="in-commentaire" placeholder="Ce qui a marché, ce qui est à reprendre, les points à suivre…">${echap(a ? a.commentaire || '' : '')}</textarea>
@@ -451,6 +605,128 @@ function pointer(membreId, valeur) {
   else a.presences[membreId] = valeur;
   sauver();
   rendre();
+}
+
+// ---------------------------------------------------------------- planning --
+/* Une assise programmée est une assise comme une autre, simplement sans
+   pointage : le jour venu on l'ouvre et on fait l'appel dedans. Pas de second
+   objet « séance » à garder synchronisé avec le premier. */
+function aVenir() {
+  const h = aujourdhui();
+  return assisesDe().filter(a => a.date >= h).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function passees() {
+  const h = aujourdhui();
+  return assisesDe().filter(a => a.date < h);
+}
+
+function ecart(iso) {
+  const j = Math.round((new Date(iso + 'T12:00:00') - new Date(aujourdhui() + 'T12:00:00')) / 864e5);
+  if (j === 0) return "aujourd'hui";
+  if (j === 1) return 'demain';
+  if (j === -1) return 'hier';
+  return j > 0 ? `dans ${j} jours` : `il y a ${-j} jours`;
+}
+
+function vuePlanning() {
+  const gs = groupesVisibles();
+  const futur = aVenir();
+  const passe = passees().slice(0, 8);
+
+  const ligne = (a) => {
+    const g = groupe(a.groupeId);
+    const c = compte(a);
+    const pointee = c.present + c.retard + c.excuse + c.absent > 0;
+    return `<button class="item" data-assise="${a.id}">
+      <span class="avatar">${dateFr(a.date).slice(0, 2)}</span>
+      <span class="grow">
+        <span class="ligne-nom truncate">${echap(a.theme || 'Assise')}</span>
+        <span class="ligne-meta" style="display:block">${dateFr(a.date, true)}${
+          a.heure ? ' · ' + echap(a.heure) : ''}${a.lieu ? ' · ' + echap(a.lieu) : ''}${
+          g && profil === 'tous' ? ' · ' + echap(g.nom) : ''}</span>
+      </span>
+      ${pointee ? `<span class="chip c-present">${c.present + c.retard}</span>`
+                : `<span class="chip">${echap(ecart(a.date))}</span>`}
+      <span class="fleche">›</span>
+    </button>`;
+  };
+
+  let h = `<h1>Planning</h1>
+  <p class="sub">Les assises programmées. Le jour venu, on l'ouvre et on fait l'appel dedans.</p>
+  <div class="btn-row">
+    ${gs.map(g => `<button class="btn btn-primary" data-programmer="${g.id}">+ Programmer${
+      profil === 'tous' ? ' — ' + echap(g.nom) : ' une assise'}</button>`).join('')}
+  </div>
+
+  <div class="section"><h2>À venir</h2>${futur.length ? `<span class="chip chip-accent">${futur.length}</span>` : ''}</div>`;
+
+  h += futur.length
+    ? `<div class="liste">${futur.map(ligne).join('')}</div>`
+    : `<div class="empty">Rien de programmé.<br>
+       Le plus simple : poser la première date et cocher « chaque semaine ».</div>`;
+
+  if (passe.length) {
+    h += `<div class="section"><h2>Déjà passées</h2></div>
+          <div class="liste">${passe.map(ligne).join('')}</div>`;
+  }
+  return h;
+}
+
+function formSeance(a, gid) {
+  const e = a || { date: aujourdhui(), heure: '', lieu: '' };
+  const g = groupe(a ? a.groupeId : gid);
+  modale(a ? "Modifier l'assise" : 'Programmer une assise', `
+    <form id="f-seance">
+      ${a ? '' : `<p class="muted" style="margin-top:0">Dans <b>${echap(g.nom)}</b>.</p>`}
+      <div class="field-2">
+        <label class="field"><span>Date</span><input type="date" name="date" required value="${echap(e.date)}"></label>
+        <label class="field"><span>Heure</span><input type="text" name="heure" placeholder="18h30" value="${echap(e.heure || '')}"></label>
+      </div>
+      <label class="field"><span>Lieu</span><input type="text" name="lieu" placeholder="Salle du bas…" value="${echap(e.lieu || '')}"></label>
+      <label class="field"><span>Thème de l'assise</span><input type="text" name="theme" value="${echap(e.theme || '')}"></label>
+      <label class="field"><span>Dars prévu</span>
+        <select name="darsId"><option value="">— aucun pour l'instant —</option>
+        ${tousLesDars().map(d => `<option value="${d.id}"${e.darsId === d.id ? ' selected' : ''}>${echap(d.titre)}</option>`).join('')}
+        </select></label>
+      ${a ? '' : `<label class="field"><span>Répéter chaque semaine</span>
+        <select name="repeter">
+          <option value="1">Cette date seulement</option>
+          <option value="4">4 semaines</option>
+          <option value="8">8 semaines</option>
+          <option value="12">12 semaines (un trimestre)</option>
+        </select></label>`}
+      <label class="field"><span>Notes de préparation</span><textarea name="notes" style="min-height:70px">${echap(e.notes || '')}</textarea></label>
+      <div class="btn-row">
+        <button type="submit" class="btn btn-primary grow">${a ? 'Enregistrer' : 'Programmer'}</button>
+        ${a ? `<button type="button" class="btn btn-danger" data-del-assise="${a.id}">Supprimer</button>` : ''}
+      </div>
+    </form>`);
+
+  $('#f-seance').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const f = Object.fromEntries(new FormData(ev.target).entries());
+    if (a) {
+      Object.assign(a, { date: f.date, heure: f.heure, lieu: f.lieu,
+                         theme: f.theme, darsId: f.darsId, notes: f.notes });
+      sauver(); fermerModale(); rendre(); return toast('Assise modifiée');
+    }
+
+    // on saute les dates déjà occupées par une assise du même groupe
+    let posees = 0;
+    const d0 = new Date(f.date + 'T12:00:00');
+    for (let i = 0; i < (+f.repeter || 1); i++) {
+      const jour = new Date(d0.getTime() + i * 7 * 864e5).toISOString().slice(0, 10);
+      if (trouverAssise(gid, jour)) continue;
+      D.assises.push({ id: id(), groupeId: gid, date: jour, heure: f.heure, lieu: f.lieu,
+                       theme: f.theme, darsId: f.darsId, notes: f.notes,
+                       encadrant: g ? g.encadrant : '', commentaire: '', presences: {} });
+      posees++;
+    }
+    sauver(); fermerModale(); aller('planning');
+    toast(posees ? `${posees} assise${posees > 1 ? 's' : ''} programmée${posees > 1 ? 's' : ''}`
+                 : 'Ces dates étaient déjà prises');
+  });
 }
 
 // ------------------------------------------------------------------ groupes --
@@ -648,6 +924,92 @@ function vueDars(did) {
   </div>`;
 }
 
+// --------------------------------------------------------------- souvenirs --
+function vueSouvenirs() {
+  const gs = groupesVisibles();
+  const photos = photosDe(null, null);
+
+  let h = `<h1>Souvenirs</h1>
+  <p class="sub">Les photos des assises. Elles restent sur cet appareil : elles ne partent
+  ni sur internet, ni dans l'export.</p>
+  <div class="btn-row">
+    ${gs.map(g => `<button class="btn btn-primary" data-photo-pour="${g.id}">📷 ${
+      profil === 'tous' ? echap(g.nom) : 'Ajouter des photos'}</button>`).join('')}
+  </div>`;
+
+  if (!photos.length) {
+    return h + `<div class="empty" style="margin-top:16px">Aucune photo pour l'instant.<br>
+      Une photo de groupe à la fin de l'assise, et on a la trace de l'année.</div>`;
+  }
+
+  // regroupées par journée, la plus récente en premier
+  const jours = [];
+  for (const p of photos) {
+    const cle = p.date + '|' + p.groupeId;
+    let j = jours.find(x => x.cle === cle);
+    if (!j) jours.push(j = { cle, date: p.date, gid: p.groupeId, liste: [] });
+    j.liste.push(p);
+  }
+
+  for (const j of jours) {
+    const g = groupe(j.gid);
+    h += `<div class="section"><h2>${dateFr(j.date, true)}${
+      g && profil === 'tous' ? ' · ' + echap(g.nom) : ''}</h2>
+      <span class="faint">${j.liste.length} photo${j.liste.length > 1 ? 's' : ''}</span></div>
+      <div class="album">${j.liste.map(p => `
+        <button class="vign" data-photo="${p.id}">
+          <img src="${p.vignette}" alt="${echap(p.legende || 'Photo de l\'assise')}" loading="lazy">
+          ${p.legende ? `<span class="lg truncate">${echap(p.legende)}</span>` : ''}
+        </button>`).join('')}</div>`;
+  }
+  return h;
+}
+
+async function vuePhoto(pid) {
+  const p = album.find(x => x.id === pid);
+  if (!p) return;
+  const g = groupe(p.groupeId);
+  modale('Photo', `<div class="photo-plein"><img id="photo-grande" src="${p.vignette}"
+      alt="${echap(p.legende || 'Photo de l\'assise')}"></div>
+    <p class="muted" style="margin:10px 0 0">${dateFr(p.date, true)}${
+      g ? ' · ' + echap(g.nom) : ''} · ${Math.round(p.poids / 1024)} Ko</p>
+    <label class="field" style="margin-top:12px"><span>Légende</span>
+      <input type="text" id="photo-legende" value="${echap(p.legende || '')}" placeholder="Ce qu'on veut se rappeler"></label>
+    <div class="btn-row">
+      <button class="btn btn-primary grow" data-photo-enregistrer="${p.id}">Enregistrer la légende</button>
+      <button class="btn" data-photo-telecharger="${p.id}">Télécharger</button>
+      <button class="btn btn-danger" data-photo-supprimer="${p.id}">Supprimer</button>
+    </div>`);
+
+  // la vignette s'affiche tout de suite, l'original la remplace dès qu'il est lu
+  const blob = await idbLire('originaux', pid);
+  const img = $('#photo-grande');
+  if (blob && img) {
+    const url = URL.createObjectURL(blob);
+    img.onload = () => setTimeout(() => URL.revokeObjectURL(url), 2000);
+    img.src = url;
+  }
+}
+
+async function supprimerPhoto(pid) {
+  await idbEffacer('originaux', pid);
+  await idbEffacer('vignettes', pid);
+  album = album.filter(p => p.id !== pid);
+  fermerModale(); rendre(); toast('Photo supprimée');
+}
+
+async function telechargerPhoto(pid) {
+  const p = album.find(x => x.id === pid);
+  const blob = await idbLire('originaux', pid);
+  if (!blob) return toast('Photo introuvable');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `assise-${p.date}-${pid.slice(0, 4)}.jpg`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 // ------------------------------------------------------------- formulaires --
 function formMembre(m, gid) {
   const e = m || { actif: true, dateArrivee: aujourdhui() };
@@ -807,23 +1169,44 @@ function vueAssise(aid) {
   if (!a) return;
   const g = groupe(a.groupeId);
   const c = compte(a);
+  const pointee = c.present + c.retard + c.excuse + c.absent > 0;
+  const d = a.darsId ? tousLesDars().find(x => x.id === a.darsId) : null;
+  const photos = photosDe(a.groupeId, a.date);
   const etat = { present: 'Présent', retard: 'Retard', excuse: 'Excusé', absent: 'Absent' };
+
   modale(dateFr(a.date, true), `
-    <p class="muted" style="margin-top:0">${g ? echap(g.nom) : ''}${a.theme ? ' · ' + echap(a.theme) : ''}</p>
-    <div class="compte" style="margin-bottom:12px">
+    <p class="muted" style="margin-top:0">${[
+      g && profil === 'tous' ? g.nom : '', a.heure, a.lieu, a.theme
+    ].filter(Boolean).map(echap).join(' · ') || 'Assise'}</p>
+
+    ${pointee ? `<div class="compte" style="margin-bottom:12px">
       <span class="chip c-present">Présents ${c.present}</span>
       <span class="chip c-retard">Retards ${c.retard}</span>
       <span class="chip c-excuse">Excusés ${c.excuse}</span>
       <span class="chip c-absent">Absents ${c.absent}</span>
-    </div>
-    ${a.commentaire ? `<div class="card" style="white-space:pre-wrap">${echap(a.commentaire)}</div>` : ''}
+    </div>` : `<p class="chip chip-accent">${echap(ecart(a.date))} · pas encore pointée</p>`}
+
+    ${d ? `<div class="card"><span class="faint">Dars prévu</span><br>
+      <button class="btn btn-ghost btn-sm" data-dars="${d.id}" style="padding-left:0">▤ ${echap(d.titre)}</button></div>` : ''}
+    ${a.notes ? `<div class="card"><span class="faint">Préparation</span>
+      <div style="white-space:pre-wrap">${echap(a.notes)}</div></div>` : ''}
+    ${a.commentaire ? `<div class="card"><span class="faint">Remarques</span>
+      <div style="white-space:pre-wrap">${echap(a.commentaire)}</div></div>` : ''}
+
+    ${photos.length ? `<div class="album" style="margin-bottom:12px">${photos.map(p =>
+      `<button class="vign" data-photo="${p.id}"><img src="${p.vignette}" alt="Photo de l'assise" loading="lazy"></button>`
+      ).join('')}</div>` : ''}
+
     <div class="liste">${membresDe(a.groupeId, true).map(m => {
       const s = a.presences[m.id];
       return s ? `<div class="item" style="cursor:default"><span class="grow">${echap(nomComplet(m))}</span>
         <span class="chip c-${s}">${etat[s]}</span></div>` : '';
     }).join('')}</div>
+
     <div class="btn-row" style="margin-top:14px">
-      <button class="btn btn-primary grow" data-ouvrir-appel="${a.id}">Reprendre l'appel</button>
+      <button class="btn btn-primary grow" data-ouvrir-appel="${a.id}">${
+        pointee ? "Reprendre l'appel" : "Faire l'appel"}</button>
+      <button class="btn" data-edit-seance="${a.id}">Modifier</button>
       <button class="btn btn-danger" data-del-assise="${a.id}">Supprimer</button>
     </div>`);
 }
@@ -849,6 +1232,14 @@ function vueReglages() {
       <p class="faint">À l'import, on te demandera si tu fusionnes — c'est ce qu'il faut pour
       réunir le collège et le lycée chez le référent sans écraser l'un avec l'autre.</p>
       <input type="file" id="r-file" accept="application/json,.json" hidden>
+    </div>
+    <div class="card">
+      <h3>Photos</h3>
+      <p class="muted">${album.length} photo${album.length > 1 ? 's' : ''} sur cet appareil${
+        album.length ? ` (${(album.reduce((n, p) => n + (p.poids || 0), 0) / 1048576).toFixed(1)} Mo)` : ''}.
+      Elles sont stockées à part du reste et <b>ne partent pas dans l'export JSON</b> —
+      volontairement : des visages de mineurs n'ont pas à circuler dans un fichier.
+      Chaque photo se télécharge une par une depuis l'album.</p>
     </div>
     <div class="card">
       <h3>Apparence</h3>
@@ -950,6 +1341,27 @@ document.addEventListener('click', (ev) => {
   if (c('[data-retour-membre]'))  { vue.membreId = null; return rendre(); }
   if (c('[data-retour-dars]'))    { vue.darsId = null; return rendre(); }
 
+  // planning
+  if ((el = c('[data-programmer]')))  return formSeance(null, el.dataset.programmer);
+  if ((el = c('[data-edit-seance]'))) return formSeance(D.assises.find(x => x.id === el.dataset.editSeance));
+
+  // photos
+  if ((el = c('[data-photo-pour]'))) {
+    vue.photoCible = { gid: el.dataset.photoPour, date: vue.nom === 'appel' ? vue.date : aujourdhui() };
+    $('#photo-file').click();
+    return;
+  }
+  if ((el = c('[data-photo]')))              return vuePhoto(el.dataset.photo);
+  if ((el = c('[data-photo-supprimer]')))    return supprimerPhoto(el.dataset.photoSupprimer);
+  if ((el = c('[data-photo-telecharger]')))  return telechargerPhoto(el.dataset.photoTelecharger);
+  if ((el = c('[data-photo-enregistrer]'))) {
+    const p = album.find(x => x.id === el.dataset.photoEnregistrer);
+    if (!p) return;
+    p.legende = $('#photo-legende').value.trim();
+    idbEcrire('vignettes', p).then(() => { fermerModale(); rendre(); toast('Légende enregistrée'); });
+    return;
+  }
+
   if ((el = c('[data-ajout-rapide]'))) return formAjoutRapide(el.dataset.ajoutRapide);
   if ((el = c('[data-add-membre]')))  return formMembre(null, el.dataset.addMembre);
   if ((el = c('[data-edit-membre]'))) return formMembre(D.membres.find(m => m.id === el.dataset.editMembre));
@@ -1025,9 +1437,12 @@ document.addEventListener('click', (ev) => {
   if (c('#r-csv'))    return exporterCSV(null);
   if (c('#r-import')) return $('#r-file').click();
   if (c('#r-raz')) {
-    if (!confirm('Tout effacer ? Exporte d\'abord si tu veux garder une trace.')) return;
+    if (!confirm('Tout effacer, photos comprises ? Exporte d\'abord si tu veux garder une trace.')) return;
     if (!confirm('Confirmer : suppression définitive de toutes les données.')) return;
-    D = vide(); sauver(); fermerModale(); aller('accueil'); return toast('Données effacées');
+    D = vide(); sauver();
+    Promise.all(album.map(p => idbEffacer('originaux', p.id).then(() => idbEffacer('vignettes', p.id))))
+      .then(() => { album = []; rendre(); });
+    fermerModale(); aller('accueil'); return toast('Données effacées');
   }
   if ((el = c('[data-theme]'))) {
     const t = el.dataset.theme;
@@ -1039,6 +1454,15 @@ document.addEventListener('click', (ev) => {
 
 document.addEventListener('change', (ev) => {
   const t = ev.target;
+  if (t.id === 'photo-file') {
+    const fichiers = Array.from(t.files || []);
+    t.value = '';
+    if (fichiers.length && vue.photoCible) {
+      toast('Traitement des photos…');
+      ajouterPhotos(fichiers, vue.photoCible);
+    }
+    return;
+  }
   if (t.id === 'sel-groupe') { vue.gid = t.value; return rendre(); }
   if (t.id === 'sel-date')   { vue.date = t.value || aujourdhui(); return rendre(); }
   if (t.id === 'r-file') {
@@ -1103,6 +1527,13 @@ document.addEventListener('keydown', (ev) => {
     .then(r => r.ok ? r.json() : [])
     .then(l => { if (Array.isArray(l) && l.length) { darsPartages = l; if (vue.nom === 'dars') rendre(); } })
     .catch(() => {});
+
+  idbTout('vignettes')
+    .then(l => {
+      album = l.sort((a, b) => (b.date + b.ajoutee).localeCompare(a.date + a.ajoutee));
+      if (album.length) rendre();
+    })
+    .catch(e => console.error('Album illisible', e));
 
   rendre();
 })();
