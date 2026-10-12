@@ -8,5 +8,5 @@
    Voir le README, section « Partager les données ». */
 window.EJ_CONFIG = {
   supabaseUrl: '',   // ex. 'https://abcdefgh.supabase.co'
-  supabaseKey: ''    // la clé « anon public » (Project Settings → API)
+  supabaseKey: 'sb_publishable_A0bHcNnK11WxHBPGx4vazg_XoxzVXFd'   // clé publique (Project Settings → API Keys)
 };
