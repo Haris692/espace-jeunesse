@@ -7,6 +7,6 @@
    supabase.sql, demandé une fois sur chaque appareil et jamais écrit ici.
    Voir le README, section « Partager les données ». */
 window.EJ_CONFIG = {
-  supabaseUrl: '',   // ex. 'https://abcdefgh.supabase.co'
+  supabaseUrl: 'https://rvinexxyjqzyaoreorbv.supabase.co',
   supabaseKey: 'sb_publishable_A0bHcNnK11WxHBPGx4vazg_XoxzVXFd'   // clé publique (Project Settings → API Keys)
 };
