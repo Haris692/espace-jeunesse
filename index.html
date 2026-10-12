@@ -5,29 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Espace Jeunesse</title>
 <meta name="description" content="Suivi des groupes, feuille d'appel des assises et bibliothèque de dars.">
-<meta name="theme-color" content="#0f4c45">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📗</text></svg>">
+<meta name="theme-color" content="#0f5a50">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jeunesse">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%230f5a50'/><text x='50' y='64' font-size='40' font-family='sans-serif' font-weight='700' fill='white' text-anchor='middle'>EJ</text></svg>">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
 <header class="topbar">
   <div class="topbar-in">
+    <button class="icon-btn" id="btn-retour" aria-label="Retour" hidden>
+      <svg class="ico" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
     <div class="brand">
-      <span class="brand-mark">EJ</span>
-      <span class="brand-txt" id="titre-profil">Espace Jeunesse</span>
+      <span class="brand-mark" id="brand-mark">EJ</span>
+      <button class="brand-txt" id="titre-profil" type="button">Espace Jeunesse</button>
     </div>
-    <button class="icon-btn" id="btn-reglages" title="Réglages" aria-label="Réglages">⚙</button>
+    <button class="synchro" id="etat-synchro" type="button" hidden><i></i><span>Local</span></button>
+    <button class="icon-btn" id="btn-reglages" title="Réglages" aria-label="Réglages">
+      <svg class="ico" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
+    </button>
   </div>
 </header>
 
-<nav class="tabs" id="tabs">
-  <button data-view="accueil" class="tab is-active"><span class="tab-ico">◉</span>Accueil</button>
-  <button data-view="appel" class="tab"><span class="tab-ico">✓</span>Appel</button>
-  <button data-view="planning" class="tab"><span class="tab-ico">▦</span>Planning</button>
-  <button data-view="groupes" class="tab"><span class="tab-ico">☰</span>Groupes</button>
-  <button data-view="dars" class="tab"><span class="tab-ico">▤</span>Dars</button>
-  <button data-view="photos" class="tab"><span class="tab-ico">◫</span>Photos</button>
+<nav class="tabs" id="tabs" aria-label="Navigation">
+  <button data-view="accueil" class="tab is-active">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z"/></svg><span>Accueil</span></button>
+  <button data-view="appel" class="tab">
+    <svg class="ico" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 3h6v3H9z"/><path d="m9 13.5 2 2 4-4.5"/></svg><span>Appel</span></button>
+  <button data-view="planning" class="tab">
+    <svg class="ico" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>Planning</span></button>
+  <button data-view="groupes" class="tab">
+    <svg class="ico" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Jeunes</span></button>
+  <button data-view="dars" class="tab">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></svg><span>Dars</span></button>
+  <button data-view="photos" class="tab">
+    <svg class="ico" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="m21 15.5-5-5L6 20"/></svg><span>Photos</span></button>
 </nav>
 
 <input type="file" id="photo-file" accept="image/*" multiple hidden>
@@ -35,17 +51,28 @@
 <main id="app" class="app"></main>
 
 <div class="modal-back" id="modal-back" hidden>
-  <div class="modal" role="dialog" aria-modal="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-head">
       <h2 id="modal-title">Titre</h2>
-      <button class="icon-btn" id="modal-close" aria-label="Fermer">✕</button>
+      <button class="icon-btn" id="modal-close" aria-label="Fermer">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
     </div>
     <div class="modal-body" id="modal-body"></div>
   </div>
 </div>
 
-<div class="toast" id="toast" hidden></div>
+<div class="modal-back confirm-back" id="confirm-back" hidden>
+  <div class="confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-titre">
+    <h2 id="confirm-titre"></h2>
+    <p id="confirm-texte"></p>
+    <div id="confirm-choix"></div>
+  </div>
+</div>
 
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="config.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

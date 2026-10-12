@@ -1,8 +1,8 @@
 # Espace Jeunesse
 
 Outil de suivi pour les deux groupes jeunesse : l'appel des assises, le suivi de
-chaque jeune, et la bibliothèque des dars. Page web simple, sans serveur, qui
-marche sur téléphone comme sur ordinateur.
+chaque jeune, et la bibliothèque des dars. Page web simple, pensée pour le
+téléphone, partagée entre tous les encadrants.
 
 **En ligne :** https://haris692.github.io/espace-jeunesse/
 
@@ -27,9 +27,9 @@ y puise.
 | Onglet | À quoi ça sert |
 |---|---|
 | **Accueil** | Effectifs, taux de présence des 8 dernières assises, la prochaine assise, et la liste des jeunes à rappeler (3 absences de suite, ou moins de 50 % de présence). |
-| **Appel** | La feuille d'appel : date, thème du jour, puis un appui par jeune — Présent / Retard / Excusé / Absent. Enregistré au fur et à mesure. Un bouton permet d'inscrire sur place un jeune qui vient pour la première fois, un autre de prendre la photo du jour. |
+| **Appel** | La feuille d'appel : un appui par jeune — Présent / Retard / Excusé / Absent, enregistré au fur et à mesure. En bas, la progression (*3 / 12 pointés*) et le bouton **Valider l'appel**, qui propose de marquer absents ceux qui restent puis affiche le récap, avec les absents à appeler. |
 | **Planning** | Les assises programmées : date, heure, lieu, thème, dars prévu, notes de préparation. Le jour venu on ouvre l'assise et on fait l'appel dedans. |
-| **Groupes** | Le groupe et son encadrant, la liste des jeunes avec leur assiduité, et la fiche individuelle (contacts, historique, notes de suivi). |
+| **Jeunes** | Le groupe et son encadrant, la liste des jeunes avec leur assiduité, et la fiche individuelle (contacts, historique, notes de suivi). |
 | **Dars** | Les supports d'assise : objectif, plan, texte arabe, Coran et hadith, références, lien vers un PDF. Recherche plein texte. |
 | **Photos** | L'album des assises, groupé par date, avec légendes. |
 
@@ -68,24 +68,52 @@ Deux chemins, depuis l'accueil, l'appel ou la fiche du groupe :
 
 ## Où vivent les données
 
-Dans le navigateur de chaque encadrant (`localStorage`), et nulle part ailleurs.
-Rien ne part sur un serveur — ce qui est voulu vu ce qu'on note sur des mineurs,
-mais qui a deux conséquences à connaître :
+**Dans une base partagée** (Supabase, gratuite) : les groupes, les jeunes, les
+appels et les dars sont les mêmes pour tous les encadrants. Ce qu'Amine pointe
+apparaît chez Adel et chez le référent quelques secondes plus tard. La pastille
+en haut de l'écran dit où on en est : *À jour*, *Envoi…*, *Hors ligne*.
 
-1. **Les données ne se synchronisent pas** entre Adel, Amine et le référent.
-   Chacun tient son groupe sur son téléphone. Pour regrouper : *Réglages →
-   Exporter (JSON)*, puis chez le référent *Importer → **Fusionner***, qui
-   ajoute ce qui manque sans écraser l'autre groupe. Réimporter deux fois le
-   même fichier ne crée pas de doublon, et une assise déjà saisie des deux
-   côtés (même groupe, même date) se recolle en une seule.
-2. **Vider les données du navigateur efface tout.** Exporter de temps en temps.
+Chaque téléphone garde aussi une copie : l'appli s'ouvre tout de suite et
+continue de marcher sans réseau. Ce qui est saisi hors ligne part dès que la
+connexion revient.
 
-L'export CSV des présences s'ouvre directement dans Excel ou LibreOffice.
+**Les photos ne sont jamais partagées** : elles restent sur le téléphone qui les
+a prises (voir plus haut).
 
-## Partager un dars aux deux encadrants
+Tant que `config.js` est vide, l'outil fonctionne comme avant : chaque
+téléphone garde ses données pour lui.
 
-Les dars créés dans l'application restent locaux, comme le reste. Pour qu'un
-dars soit visible par tout le monde :
+### Mettre en route le partage (une fois, ~10 minutes)
+
+1. Créer un compte sur [supabase.com](https://supabase.com), puis un projet
+   (région *Europe*, plan gratuit).
+2. Dans le projet : **SQL Editor → New query**. Coller le contenu de
+   [`supabase.sql`](supabase.sql), **remplacer `CHANGE-MOI` par le code d'accès
+   choisi**, puis *Run*.
+3. **Project Settings → API** : copier la *Project URL* et la clé
+   *anon public* (ou *publishable*) dans [`config.js`](config.js), puis pousser.
+4. Sur chaque téléphone, l'appli demande le code d'accès une seule fois.
+
+Le dépôt est public : l'adresse et la clé de `config.js` le sont aussi, et ce
+n'est pas grave — elles ne disent que *où* est la base. Sans le code d'accès,
+la base paraît vide et refuse toute écriture. Ce code n'est écrit nulle part
+dans le dépôt ; ne le partager qu'avec les encadrants.
+
+Les données déjà saisies sur un téléphone avant la mise en route partent dans
+la base à la première connexion de ce téléphone ; une assise saisie des deux
+côtés (même groupe, même date) se recolle en une seule.
+
+### Sauvegardes
+
+*Réglages → Exporter (JSON)* garde un fichier de côté ; *Importer → Fusionner*
+le remet. L'export CSV des présences s'ouvre dans Excel ou LibreOffice.
+
+## Les dars modèles
+
+Avec la base partagée, un dars créé dans l'appli est visible de tous. Le fichier
+`data/dars-partages.json` sert en plus à livrer des dars **modèles** avec le
+site (lecture seule). Sans base partagée, c'est le seul moyen de partager un
+dars :
 
 1. *Dars → Exporter pour partage* : on obtient un `dars-partages.json`.
 2. Déposer son contenu dans `data/dars-partages.json` du dépôt et pousser.
@@ -105,19 +133,13 @@ python -m http.server 8000
 ## Structure
 
 ```
-index.html   coquille, onglets, modale
+index.html   coquille, navigation du bas, fenêtres
 styles.css   thème clair/sombre, mobile d'abord, feuille d'appel imprimable
-app.js       données, vues et événements — un seul fichier, sans dépendance
+app.js       données, partage, vues et événements — un seul fichier, sans dépendance
+config.js    adresse de la base partagée (vide = chaque téléphone pour soi)
+supabase.sql la table et le code d'accès, à lancer une fois dans Supabase
 data/dars-partages.json   les dars communs, versionnés dans le dépôt
 ```
 
 Les listes de jeunes ne sont **pas** versionnées (`.gitignore`) : le dépôt est
-public. Elles se transmettent par fichier d'export, de la main à la main.
-
-## Si le besoin de synchronisation devient réel
-
-Le format de données est un seul objet JSON (`groupes`, `membres`, `assises`,
-`dars`). Le jour où il faut du vrai partage en temps réel, on remplace les deux
-fonctions `charger()` et `sauver()` de `app.js` par des appels à un Supabase ou
-un Firebase — le reste de l'application ne bouge pas. C'est le seul endroit qui
-touche au stockage.
+public. Elles vivent dans la base partagée, protégée par le code d'accès.
