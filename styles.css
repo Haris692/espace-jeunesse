@@ -255,6 +255,9 @@ select {
   background-repeat: no-repeat; background-position: right 12px center; background-size: 18px;
   padding-right: 38px;
 }
+/* le code d'accès est masqué sans être un champ « mot de passe » : sinon le
+   téléphone propose (ou ouvre) son gestionnaire de mots de passe */
+input.masque { -webkit-text-security: disc; text-security: disc; }
 textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
 input:focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent);

@@ -782,8 +782,11 @@ function vueCode() {
       Entre le code d'accès qu'on t'a donné — il n'est demandé qu'une fois sur ce téléphone.</p>
     <form id="f-code" class="card">
       <label class="field"><span>Code d'accès</span>
-        <input type="password" name="code" required autocomplete="current-password"
-               autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go"></label>
+        <input type="text" name="code" id="champ-code" class="masque" required autocomplete="off"
+               autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go"
+               data-1p-ignore data-lpignore="true" data-form-type="other"></label>
+      <label class="faint" style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px">
+        <input type="checkbox" id="voir-code"> Afficher le code</label>
       <p class="faint" id="code-erreur" style="color:var(--absent);margin:-4px 0 12px" hidden></p>
       <button type="submit" class="btn btn-primary btn-lg btn-wide">Se connecter</button>
     </form>
@@ -2081,6 +2084,7 @@ document.addEventListener('change', (ev) => {
     }
     return;
   }
+  if (t.id === 'voir-code') { $('#champ-code').classList.toggle('masque', !t.checked); return; }
   if (t.id === 'sel-groupe') { vue.gid = t.value; remplacer(); return rendre(); }
   if (t.id === 'sel-date')   { vue.date = t.value || aujourdhui(); remplacer(); return rendre(); }
   if (t.id === 'r-file') {
