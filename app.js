@@ -538,6 +538,15 @@ const ICO = {
   alerte:   '<path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17v.5"/>',
   croix:    '<path d="M6 6l12 12M18 6 6 18"/>'
 };
+const ETOILE = '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><rect x="5" y="5" width="14" height="14"/><rect x="5" y="5" width="14" height="14" transform="rotate(45 12 12)"/></g><circle cx="12" cy="12" r="2.6" fill="#0d2f2b"/></svg>';
+
+/* une teinte par jeune, tirée de son identifiant : elle ne change jamais */
+function teinte(cle) {
+  let h = 0;
+  for (const ch of String(cle || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return 'av-' + (h % 6);
+}
+
 const ico = (n) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICO[n] || ''}</svg>`;
 const fleche = () => `<svg class="ico fleche" viewBox="0 0 24 24" aria-hidden="true">${ICO.fleche}</svg>`;
 
@@ -776,7 +785,7 @@ function majEntete() {
 // ------------------------------------------------------- écrans d'entrée ---
 function vueCode() {
   return `<div class="bienvenue">
-    <div class="logo">EJ</div>
+    <div class="logo">${ETOILE}</div>
     <h1>Espace Jeunesse</h1>
     <p class="sub">Les groupes, les jeunes et les appels sont partagés entre tous les encadrants.
       Entre le code d'accès qu'on t'a donné — il n'est demandé qu'une fois sur ce téléphone.</p>
@@ -796,7 +805,7 @@ function vueCode() {
 function vueBienvenue() {
   const gs = D.groupes.slice().sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
   return `<div class="bienvenue">
-    <div class="logo">EJ</div>
+    <div class="logo">${ETOILE}</div>
     <h1>Bienvenue</h1>
     <p class="sub">Quel groupe suis-tu sur ce téléphone ? Tu ne verras que tes jeunes et tes assises.</p>
     ${gs.map(g => `
@@ -884,10 +893,12 @@ function vueAccueil() {
   }
   const auj = aujourdhui();
   const seul = gidParDefaut();
+  const encadrant = seul && groupe(seul) ? (groupe(seul).encadrant || '').split(' ')[0] : '';
 
   let h = `<section class="hero">
     <div class="hero-date">${echap(dateCourte(auj))}</div>
-    <h1>Assalamu alaykum</h1>
+    <div class="hero-salam" lang="ar">السلام عليكم</div>
+    <h1>${encadrant ? 'Salam, ' + echap(encadrant) : 'Assalamu alaykum'}</h1>
     <p>${pluriel(total, 'jeune')} suivi${total > 1 ? 's' : ''} · ${pluriel(passees().length, 'assise')}</p>
     ${gs.map(heroGroupe).join('')}
   </section>
@@ -904,7 +915,7 @@ function vueAccueil() {
     h += `<div class="section"><h2>À rappeler</h2><span class="chip chip-alert">${alertes.length}</span></div>
     <div class="liste">${alertes.slice(0, 8).map(a => `
       <button class="item" data-membre="${a.m.id}" data-gid="${a.g.id}">
-        <span class="avatar" style="background:color-mix(in srgb,var(--absent) 13%,transparent);color:var(--absent)">${echap(initiales(a.m))}</span>
+        <span class="avatar ${teinte(a.m.id)}">${echap(initiales(a.m))}</span>
         <span class="grow">
           <span class="ligne-nom" style="display:block">${echap(nomComplet(a.m))}</span>
           <span class="ligne-meta">${echap(a.motif)}${profil === 'tous' ? ' · ' + echap(a.g.nom) : ''}</span>
@@ -1057,7 +1068,7 @@ function vueAppel() {
     const t = taux(m.id, gid);
     h += `<div class="ligne" data-etat="${s}">
       <div class="card-row">
-        <span class="avatar">${echap(initiales(m))}</span>
+        <span class="avatar ${teinte(m.id)}">${echap(initiales(m))}</span>
         <span class="grow">
           <div class="ligne-nom truncate">${echap(nomComplet(m))}</div>
           <div class="ligne-meta">${m.niveau ? echap(m.niveau) + ' · ' : ''}${
@@ -1169,7 +1180,7 @@ function recapAppel(a) {
       <div class="card" style="padding:12px 14px">${absents.map(m => {
         const num = m.contact || m.telephone;
         return `<div class="contact">
-          <span class="avatar">${echap(initiales(m))}</span>
+          <span class="avatar ${teinte(m.id)}">${echap(initiales(m))}</span>
           <span class="grow"><span class="ligne-nom" style="display:block">${echap(nomComplet(m))}</span>
             <span class="ligne-meta">${num ? (m.contact ? 'Parent · ' : '') + echap(num) : 'Pas de numéro enregistré'}</span></span>
           ${num ? `<a class="icon-btn" href="sms:${echap(num)}" aria-label="SMS">${ico('sms')}</a>
@@ -1347,7 +1358,7 @@ function vueGroupe(gid) {
       const alerte = decroche(m.id, gid);
       h += `<button class="item" data-membre="${m.id}" data-gid="${gid}" data-nom="${echap(nomComplet(m).toLowerCase())}"${
         m.actif === false ? ' style="opacity:.6"' : ''}>
-        <span class="avatar">${echap(initiales(m))}</span>
+        <span class="avatar ${teinte(m.id)}">${echap(initiales(m))}</span>
         <span class="grow">
           <span class="ligne-nom">${echap(nomComplet(m))}</span>
           ${m.actif === false ? ' <span class="chip">ne vient plus</span>' : ''}${alerte ? ' <span class="chip chip-alert">à rappeler</span>' : ''}
@@ -1382,7 +1393,7 @@ function vueMembre(mid) {
     </div>` : '';
 
   let h = `<div class="card-row" style="margin:0 0 16px">
-    <span class="avatar" style="width:58px;height:58px;font-size:1.15rem">${echap(initiales(m))}</span>
+    <span class="avatar ${teinte(m.id)}">${echap(initiales(m))}</span>
     <div class="grow">
       <h1 style="margin:0">${echap(nomComplet(m))}</h1>
       <p class="muted" style="margin:2px 0 0">${[m.niveau, g && g.nom].filter(Boolean).map(echap).join(' · ')}${
@@ -1753,10 +1764,10 @@ function vueAssise(aid) {
 
     ${pointee ? `<div class="compte" style="margin-bottom:14px">
       ${a.terminee ? `<span class="chip chip-accent">${ico('check').replace('class="ico"', 'class="ico" style="width:13px;height:13px"')}validé</span>` : ''}
-      <span class="chip c-present">${c.present} présents</span>
-      ${c.retard ? `<span class="chip c-retard">${c.retard} retards</span>` : ''}
-      ${c.excuse ? `<span class="chip c-excuse">${c.excuse} excusés</span>` : ''}
-      <span class="chip c-absent">${c.absent} absents</span>
+      <span class="chip c-present">${pluriel(c.present, 'présent')}</span>
+      ${c.retard ? `<span class="chip c-retard">${pluriel(c.retard, 'retard')}</span>` : ''}
+      ${c.excuse ? `<span class="chip c-excuse">${pluriel(c.excuse, 'excusé')}</span>` : ''}
+      <span class="chip c-absent">${pluriel(c.absent, 'absent')}</span>
     </div>` : `<p><span class="chip chip-accent">${echap(ecart(a.date))} · pas encore d'appel</span></p>`}
 
     ${d ? `<button class="item" data-dars="${d.id}" style="margin-bottom:12px">
@@ -1780,7 +1791,7 @@ function vueAssise(aid) {
 
     <div class="actions">
       <button class="icon-btn btn-danger" data-del-assise="${a.id}" aria-label="Supprimer">${ico('poubelle')}</button>
-      <button class="btn" data-edit-seance="${a.id}">${ico('crayon')}Modifier</button>
+      <button class="icon-btn" data-edit-seance="${a.id}" aria-label="Modifier l'assise">${ico('crayon')}</button>
       <button class="btn btn-primary grow" data-ouvrir-appel="${a.id}">${ico('appel')}${
         pointee ? "Reprendre l'appel" : "Faire l'appel"}</button>
     </div>`);
