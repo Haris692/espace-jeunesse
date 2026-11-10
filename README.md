@@ -103,6 +103,14 @@ Les données déjà saisies sur un téléphone avant la mise en route partent da
 la base à la première connexion de ce téléphone ; une assise saisie des deux
 côtés (même groupe, même date) se recolle en une seule.
 
+### Si la base ne répond plus
+
+Sur l'offre gratuite, Supabase **met le projet en pause après une semaine sans
+activité**. L'appli affiche alors « Base injoignable ». Pour la relancer : se
+connecter sur [supabase.com](https://supabase.com), ouvrir le projet, puis
+**Restore project**. Rien n'est perdu ; ce qui a été saisi entre-temps sur un
+téléphone part dès que la base répond de nouveau.
+
 ### Sauvegardes
 
 *Réglages → Exporter (JSON)* garde un fichier de côté ; *Importer → Fusionner*

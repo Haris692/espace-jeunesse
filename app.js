@@ -288,8 +288,10 @@ function integrer(lignes) {
 
 function erreurReseau(e) {
   console.warn('Partage :', e);
-  if (e && (e.status === 401 || e.status === 403)) return codeRefuse();
-  majEtat(navigator.onLine === false || !e.status ? 'horsligne' : 'erreur');
+  // un refus peut venir d'un code changé, mais aussi d'une clé ou d'une base en
+  // panne : on ne jette le code que si la ligne témoin le confirme (recevoir)
+  if (e && (e.status === 401 || e.status === 403)) partage.verifie = false;
+  majEtat(navigator.onLine === false ? 'horsligne' : 'erreur');
 }
 
 function codeRefuse() {
@@ -309,8 +311,10 @@ async function essayerCode(code) {
     if (!v || !v.length) { partage.code = ''; return 'Ce code n\'est pas le bon.'; }
   } catch (e) {
     partage.code = '';
-    return e.status ? 'La base ne répond pas correctement (erreur ' + e.status + ').'
-                    : 'Pas de connexion internet. Réessaie une fois connecté.';
+    if (navigator.onLine === false) return 'Pas de connexion internet. Réessaie une fois connecté.';
+    if (e.status === 401) return 'La base refuse la clé de config.js : elle a peut-être été changée dans Supabase.';
+    if (e.status) return 'La base partagée répond mal (erreur ' + e.status + ').';
+    return 'La base partagée est injoignable. Elle est peut-être en pause : il faut la réactiver dans Supabase.';
   }
   partage.verifie = true;
   localStorage.setItem(CLE_CODE, code);
@@ -326,7 +330,7 @@ const ETATS = {
   attente:   'Envoi…',
   envoi:     'Envoi…',
   horsligne: 'Hors ligne',
-  erreur:    'Non envoyé',
+  erreur:    'Base injoignable',
   code:      'Code ?'
 };
 
@@ -338,7 +342,7 @@ function majEtat(e) {
   b.dataset.etat = e;
   $('span', b).textContent = ETATS[e] || e;
   b.title = e === 'horsligne' ? 'Pas de réseau : ce qui est saisi partira au retour de la connexion'
-          : e === 'erreur' ? 'Envoi impossible pour le moment, nouvel essai bientôt' : 'Partagé avec tous les encadrants';
+          : e === 'erreur' ? 'La base partagée ne répond pas : ce qui est saisi reste sur ce téléphone et partira dès son retour' : 'Partagé avec tous les encadrants';
 }
 
 async function synchroniserMaintenant() {
@@ -347,7 +351,7 @@ async function synchroniserMaintenant() {
   await recevoir();
   toast(partage.etat === 'ok' ? 'Tout est à jour'
       : partage.etat === 'horsligne' ? 'Pas de réseau — ce sera envoyé plus tard'
-      : 'La base partagée ne répond pas', partage.etat !== 'ok');
+      : 'La base partagée ne répond pas (en pause dans Supabase ?)', partage.etat !== 'ok');
 }
 
 // ------------------------------------------------------------------ photos --
